@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scam Detector</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="user-bar">
+                <div class="user-info">
+                    <img id="userAvatar" class="avatar-small" src="" alt="User avatar">
+                    <span id="userName"></span>
+                    <span id="creditsCount" class="credits-badge">Credits: -</span>
+                </div>
+                <button id="logoutBtn" class="logout-btn">Logout</button>
+            </div>
+            <h1>🔍 Scam Detector</h1>
+            <p>Analyze suspicious messages and detect potential scams</p>
+        </header>
+
+        <main>
+            <form id="scamForm" class="scam-form">
+                <div class="form-group">
+                    <label for="content">Suspicious Content</label>
+                    <textarea 
+                        id="content" 
+                        name="content" 
+                        placeholder="Paste the suspicious message here..."
+                        required
+                    ></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="senderEmail">Sender's Email (Optional)</label>
+                    <input 
+                        type="email" 
+                        id="senderEmail" 
+                        name="senderEmail" 
+                        placeholder="example@domain.com"
+                    >
+                </div>
+
+                <button type="submit" class="submit-btn">
+                    Analyze Message
+                </button>
+            </form>
+
+            <div id="result" class="result-container hidden">
+                <h2>Analysis Result</h2>
+                <div class="result-content">
+                    <div class="loading-spinner hidden"></div>
+                    <div id="resultDetails"></div>
+                </div>
+            </div>
+
+            <div id="history" class="history-container">
+                <h2>Recent Analyses</h2>
+                <div id="historyList" class="history-list"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by VirusTotal & Deepseek AI</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { 
+            getAuth,
+            signOut,
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { 
+            getFirestore,
+            doc,
+            getDoc
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtrNhduCtEHKp0T1FsvG2ZrMHfhJJDxAM",
+            authDomain: "scam-detector-7f45f.firebaseapp.com",
+            projectId: "scam-detector-7f45f",
+            storageBucket: "scam-detector-7f45f.firebasestorage.app",
+            messagingSenderId: "497782676341",
+            appId: "1:497782676341:web:355d27eb082aff8d27d13c",
+            measurementId: "G-86N2JLD604"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Check authentication state
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in
+                document.getElementById('userAvatar').src = user.photoURL || 'default-avatar.png';
+                document.getElementById('userName').textContent = user.displayName || user.email;
+                
+                // Get user credits
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    if (userDoc.exists()) {
+                        document.getElementById('creditsCount').textContent = `Credits: ${userDoc.data().credits || 0}`;
+                    }
+                } catch (error) {
+                    console.error('Error fetching user data:', error);
+                }
+            } else {
+                // User is signed out, redirect to login
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Logout functionality
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                window.location.href = 'login.html';
+            } catch (error) {
+                console.error('Error signing out:', error);
+                alert('Failed to sign out. Please try again.');
+            }
+        });
+    </script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

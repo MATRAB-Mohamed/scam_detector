@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Scam Detector</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Scam Detector</h1>
+            <p>Login to access the scam detection service</p>
+        </header>
+
+        <main>
+            <div class="auth-container">
+                <div id="loginBox">
+                    <!-- Email/Password Login -->
+                    <form id="emailPasswordForm" class="auth-form">
+                        <div class="form-group">
+                            <input type="email" id="email" placeholder="Email" required>
+                            <p class="error-message" id="emailError"></p>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="password" placeholder="Password" required>
+                            <p class="error-message" id="passwordError"></p>
+                        </div>
+                        <button type="submit" id="submitBtn" class="submit-btn">Sign in with Email</button>
+                        <p class="auth-link">Don't have an account? <a href="#" id="toggleForm">Sign up</a></p>
+                    </form>
+
+                    <!-- Social Login Options -->
+                    <div class="social-login">
+                        <p class="divider">Or continue with</p>
+                        <div class="social-buttons">
+                            <button id="loginWithGoogle" class="google-btn">
+                                <img src="https://www.google.com/favicon.ico" alt="Google" width="20" height="20">
+                                Sign in with Google
+                            </button>
+                            <button id="loginWithApple" class="apple-btn">
+                                <img src="https://www.apple.com/favicon.ico" alt="Apple" width="20" height="20">
+                                Sign in with Apple
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="userInfo" class="user-info hidden">
+                    <img id="userAvatar" class="avatar" src="" alt="User avatar">
+                    <p id="userName"></p>
+                    <p id="userEmail" class="email"></p>
+                    <div class="credits-info">
+                        <p>Credits remaining today: <span id="creditsCount">-</span></p>
+                    </div>
+                    <button id="logoutBtn" class="logout-btn">Logout</button>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by VirusTotal & Deepseek AI</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInWithPopup, 
+            GoogleAuthProvider,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            OAuthProvider
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc,
+            getDoc,
+            serverTimestamp,
+            updateDoc
+        } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-analytics.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtrNhduCtEHKp0T1FsvG2ZrMHfhJJDxAM",
+            authDomain: "scam-detector-7f45f.firebaseapp.com",
+            projectId: "scam-detector-7f45f",
+            storageBucket: "scam-detector-7f45f.firebasestorage.app",
+            messagingSenderId: "497782676341",
+            appId: "1:497782676341:web:355d27eb082aff8d27d13c",
+            measurementId: "G-86N2JLD604"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let isSignUp = false;
+
+        // Function to show error message
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // Toggle between Sign In and Sign Up
+        document.getElementById('toggleForm').addEventListener('click', (e) => {
+            e.preventDefault();
+            isSignUp = !isSignUp;
+            const submitBtn = document.getElementById('submitBtn');
+            const toggleLink = document.getElementById('toggleForm');
+            
+            if (isSignUp) {
+                submitBtn.textContent = 'Sign up with Email';
+                toggleLink.textContent = 'Sign in';
+                document.querySelector('.auth-link').firstChild.textContent = "Already have an account? ";
+            } else {
+                submitBtn.textContent = 'Sign in with Email';
+                toggleLink.textContent = 'Sign up';
+                document.querySelector('.auth-link').firstChild.textContent = "Don't have an account? ";
+            }
+        });
+
+        // Function to create user document in Firestore
+        async function createUserDocument(user) {
+            if (!user || !user.uid) {
+                console.error('No user data provided to createUserDocument');
+                return false;
+            }
+
+            try {
+                console.log('Starting to create/update user document for:', user.uid);
+                const userRef = doc(db, 'users', user.uid);
+                
+                // First, check if the document exists
+                const userSnap = await getDoc(userRef);
+                console.log('Document exists?', userSnap.exists());
+
+                if (!userSnap.exists()) {
+                    console.log('Creating new user document...');
+                    // Create new user document with initial credits
+                    const userData = {
+                        email: user.email,
+                        name: user.displayName || user.email.split('@')[0],
+                        credits: 4,
+                        lastCreditReset: serverTimestamp(),
+                        createdAt: serverTimestamp(),
+                        lastLogin: serverTimestamp(),
+                        photoURL: user.photoURL || null,
+                        uid: user.uid
+                    };
+                    
+                    try {
+                        // Create the document
+                        await setDoc(userRef, userData);
+                        console.log('Document created successfully');
+                        
+                        // Verify the document was created
+                        const verifySnap = await getDoc(userRef);
+                        if (!verifySnap.exists()) {
+                            console.error('Document verification failed');
+                            throw new Error('Failed to create user document');
+                        }
+                        
+                        const verifyData = verifySnap.data();
+                        console.log('Document verified:', verifyData);
+                        
+                        if (verifyData.credits === undefined) {
+                            console.error('Credits not set in document');
+                            throw new Error('Document created but credits not set');
+                        }
+                        
+                        return true;
+                    } catch (error) {
+                        console.error('Error creating document:', error);
+                        // Try one more time
+                        await setDoc(userRef, userData);
+                        const finalCheck = await getDoc(userRef);
+                        if (!finalCheck.exists()) {
+                            throw new Error('Failed to create document after retry');
+                        }
+                        return true;
+                    }
+                } else {
+                    console.log('Updating existing user document...');
+                    // Check if credits exist
+                    const userData = userSnap.data();
+                    if (userData.credits === undefined) {
+                        console.log('Adding missing credits to existing user...');
+                        await updateDoc(userRef, {
+                            credits: 4,
+                            lastCreditReset: serverTimestamp()
+                        });
+                    }
+                    
+                    // Update last login and other fields
+                    const updateData = {
+                        lastLogin: serverTimestamp(),
+                        email: user.email,
+                        name: user.displayName || userData.name || user.email.split('@')[0],
+                        photoURL: user.photoURL || userData.photoURL || null
+                    };
+                    
+                    await updateDoc(userRef, updateData);
+                    console.log('Document updated successfully');
+                    
+                    // Verify the update
+                    const finalCheck = await getDoc(userRef);
+                    const finalData = finalCheck.data();
+                    console.log('Final document state:', finalData);
+                    
+                    if (finalData.credits === undefined) {
+                        console.error('Credits still undefined after update');
+                        throw new Error('Failed to ensure credits exist');
+                    }
+                    
+                    return true;
+                }
+            } catch (error) {
+                console.error('Error in createUserDocument:', error);
+                // Log additional details
+                console.error('User ID:', user.uid);
+                console.error('User email:', user.email);
+                throw error;
+            }
+        }
+
+        // Email/Password Sign In/Sign Up
+        document.getElementById('emailPasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                let userCredential;
+                if (isSignUp) {
+                    console.log('Starting signup process...');
+                    // Sign up new user
+                    userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    console.log('User created in Firebase Auth:', userCredential.user.uid);
+                    
+                    // Create user document in Firestore
+                    console.log('Creating Firestore document...');
+                    const docCreated = await createUserDocument(userCredential.user);
+                    console.log('Firestore document created:', docCreated);
+                    
+                    if (!docCreated) {
+                        throw new Error('Failed to create Firestore document');
+                    }
+                    
+                    // Double check the document exists and has credits
+                    const userRef = doc(db, 'users', userCredential.user.uid);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        throw new Error('Document not found after creation');
+                    }
+                    
+                    const userData = userDoc.data();
+                    if (userData.credits === undefined) {
+                        throw new Error('Credits not set in document');
+                    }
+                    
+                    console.log('Signup complete, showing success message...');
+                    
+                    // Show success message and ask user to sign in
+                    const form = document.getElementById('emailPasswordForm');
+                    form.innerHTML = `
+                        <div class="success-message">
+                            <h3>Account created successfully!</h3>
+                            <p>Please sign in with your new account.</p>
+                        </div>
+                        <div class="form-group">
+                            <input type="email" id="email" placeholder="Email" required>
+                            <p class="error-message" id="emailError"></p>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="password" placeholder="Password" required>
+                            <p class="error-message" id="passwordError"></p>
+                        </div>
+                        <button type="submit" id="submitBtn" class="submit-btn">Sign in with Email</button>
+                        <p class="auth-link">Don't have an account? <a href="#" id="toggleForm">Sign up</a></p>
+                    `;
+                    
+                    // Reset form state
+                    isSignUp = false;
+                    
+                    // Reattach event listeners
+                    document.getElementById('toggleForm').addEventListener('click', (e) => {
+                        e.preventDefault();
+                        isSignUp = !isSignUp;
+                        const submitBtn = document.getElementById('submitBtn');
+                        const toggleLink = document.getElementById('toggleForm');
+                        
+                        if (isSignUp) {
+                            submitBtn.textContent = 'Sign up with Email';
+                            toggleLink.textContent = 'Sign in';
+                            document.querySelector('.auth-link').firstChild.textContent = "Already have an account? ";
+                        } else {
+                            submitBtn.textContent = 'Sign in with Email';
+                            toggleLink.textContent = 'Sign up';
+                            document.querySelector('.auth-link').firstChild.textContent = "Don't have an account? ";
+                        }
+                    });
+                    
+                    // Sign out the user to force them to sign in
+                    await auth.signOut();
+                    
+                } else {
+                    console.log('Starting signin process...');
+                    // Sign in existing user
+                    userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    console.log('User signed in:', userCredential.user.uid);
+                    
+                    // Update last login in Firestore
+                    await createUserDocument(userCredential.user);
+                    console.log('User document updated, redirecting...');
+                    
+                    window.location.href = 'index.html';
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                
+                switch (error.code) {
+                    case 'auth/email-already-in-use':
+                        showError('emailError', 'This email is already registered. Please sign in instead.');
+                        break;
+                    case 'auth/invalid-email':
+                        showError('emailError', 'Please enter a valid email address.');
+                        break;
+                    case 'auth/weak-password':
+                        showError('passwordError', 'Password should be at least 6 characters long.');
+                        break;
+                    case 'auth/user-not-found':
+                        showError('emailError', 'No account found with this email. Please sign up.');
+                        break;
+                    case 'auth/wrong-password':
+                        showError('passwordError', 'Incorrect password. Please try again.');
+                        break;
+                    default:
+                        showError('emailError', `Error: ${error.message}`);
+                }
+            }
+        });
+
+        // Google Sign In
+        document.getElementById('loginWithGoogle').addEventListener('click', async () => {
+            try {
+                console.log('Starting Google sign-in...');
+                const provider = new GoogleAuthProvider();
+                provider.addScope('email');
+                
+                // Sign in with popup
+                const result = await signInWithPopup(auth, provider);
+                console.log('Google sign-in successful:', result.user.uid);
+                
+                try {
+                    // Create/update user document in Firestore
+                    console.log('Creating/updating Firestore document...');
+                    const docCreated = await createUserDocument(result.user);
+                    
+                    if (!docCreated) {
+                        console.error('Document creation returned false');
+                        throw new Error('Failed to create/update Firestore document');
+                    }
+                    
+                    // Verify the document exists and has credits
+                    const userRef = doc(db, 'users', result.user.uid);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        console.error('Document not found after creation');
+                        throw new Error('Document not found after creation');
+                    }
+                    
+                    const userData = userDoc.data();
+                    if (userData.credits === undefined) {
+                        console.error('Credits not set in document:', userData);
+                        throw new Error('Credits not set in document');
+                    }
+                    
+                    console.log('Google sign-in and document creation complete');
+                    console.log('User document:', userData);
+                    
+                    // Redirect to main page
+                    window.location.href = 'index.html';
+                } catch (firestoreError) {
+                    console.error('Firestore error:', firestoreError);
+                    // Try one more time to create the document
+                    try {
+                        console.log('Retrying document creation...');
+                        await createUserDocument(result.user);
+                        window.location.href = 'index.html';
+                    } catch (retryError) {
+                        console.error('Retry failed:', retryError);
+                        throw new Error('Failed to create user document after retry');
+                    }
+                }
+            } catch (error) {
+                console.error('Google sign-in error:', error);
+                let errorMessage = 'Failed to sign in with Google. ';
+                
+                switch (error.code) {
+                    case 'auth/popup-closed-by-user':
+                        errorMessage += 'Sign-in popup was closed.';
+                        break;
+                    case 'auth/popup-blocked':
+                        errorMessage += 'Sign-in popup was blocked. Please allow popups for this site.';
+                        break;
+                    case 'auth/cancelled-popup-request':
+                        errorMessage += 'Sign-in was cancelled.';
+                        break;
+                    case 'auth/network-request-failed':
+                        errorMessage += 'Network error. Please check your internet connection.';
+                        break;
+                    default:
+                        errorMessage += error.message;
+                }
+                
+                showError('emailError', errorMessage);
+            }
+        });
+
+        // Apple Sign In with Firestore integration
+        document.getElementById('loginWithApple').addEventListener('click', async () => {
+            try {
+                const provider = new OAuthProvider('apple.com');
+                const result = await signInWithPopup(auth, provider);
+                
+                // Create/update user document
+                await createUserDocument(result.user);
+                
+                window.location.href = 'index.html';
+            } catch (error) {
+                console.error('Error signing in with Apple:', error);
+                switch (error.code) {
+                    case 'auth/popup-closed-by-user':
+                        showError('emailError', 'Apple sign-in was cancelled. Please try again.');
+                        break;
+                    case 'auth/network-request-failed':
+                        showError('emailError', 'Network error. Please check your internet connection.');
+                        break;
+                    case 'auth/invalid-credential':
+                        showError('emailError', 'Invalid Apple ID credentials. Please try again.');
+                        break;
+                    default:
+                        showError('emailError', 'Failed to sign in with Apple. Please try again.');
+                }
+            }
+        });
+
+        // Auth state observer
+        auth.onAuthStateChanged((user) => {
+            const loginBox = document.getElementById('loginBox');
+            const userInfo = document.getElementById('userInfo');
+            
+            if (user) {
+                loginBox.classList.add('hidden');
+                userInfo.classList.remove('hidden');
+                
+                document.getElementById('userAvatar').src = user.photoURL || 'default-avatar.png';
+                document.getElementById('userName').textContent = user.displayName;
+                document.getElementById('userEmail').textContent = user.email;
+                
+                window.location.href = 'index.html';
+            } else {
+                loginBox.classList.remove('hidden');
+                userInfo.classList.add('hidden');
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await auth.signOut();
+            } catch (error) {
+                console.error('Error signing out:', error);
+                alert('Failed to sign out. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html> 
